@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Exploring Shade in Upper Manhattan</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-color: #f9f9f9;
+            padding: 0;
+            margin: 0;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        h1 {
+            margin: 0;
+            padding: 20px 0;
+            font-size: 40px;
+            color: black; /* Changed to black */
+            position: relative;
+            z-index: 10;
+        }
+
+        #selection-container {
+            margin: 20px 0;
+            z-index: 10;
+            position: relative;
+        }
+
+        label {
+            color: black; /* Changed to black */
+        }
+
+        select {
+            padding: 10px;
+            font-size: 16px;
+            background-color: #f0f0f0;
+            color: black; /* Changed to black */
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+
+        .chart-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            position: relative;
+            width: 100%;
+            margin-top: 20px; /* Position chart below the dropdown */
+            flex-grow: 1;
+            max-height: 75vh; /* Limit the height to avoid overflow */
+            overflow-y: auto; /* Add scroll if necessary */
+        }
+
+        .chart {
+            display: none;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .chart.active {
+            display: block;
+        }
+
+        .tooltip {
+            position: absolute;
+            padding: 10px;
+            background-color: #f9f9f9;
+            color: black; /* Changed to black */
+            font-size: 14px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            width: auto;
+            max-width: 200px;
+            word-wrap: break-word;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <!-- Title -->
+    <h1>Exploring Shade in Upper Manhattan</h1>
+
+    <!-- Dropdown for chart selection -->
+    <div id="selection-container">
+        <label for="chart-select">Select a category to view:</label>
+        <select id="chart-select">
+            <option value="">-- Select a Category --</option>
+        </select>
+    </div>
+
+    <!-- Chart container for pie charts -->
+    <div id="charts" class="chart-container"></div>
+
+    <script>
+        const width = 500;
+        const height = 500;
+        const radius = Math.min(width, height) / 2;
+
+        const greenShades = [
+            "#006400", "#2E8B57", "#3CB371", "#228B22", "#66CDAA", 
+            "#8FBC8F", "#20B2AA", "#32CD32"
+        ];
+
+        const createPieChart = (columnName, data, total) => {
+            const container = d3.select("#charts")
+                .append("div")
+                .attr("class", "chart")
+                .attr("id", `chart-${columnName}`);
+
+            const svg = container.append("svg")
+                .attr("width", width * 1.5)
+                .attr("height", height * 1.5)
+                .append("g")
+                .attr("transform", `translate(${(width * 1.5) / 2}, ${(height * 1.5) / 2})`);
+
+            const pie = d3.pie().value(d => d[1]);
+            const dataReady = pie(Object.entries(data));
+
+            const arc = d3.arc()
+                .innerRadius(80)
+                .outerRadius(radius);
+
+            const tooltip = d3.select("body").append("div")
+                .attr("class", "tooltip")
+                .style("opacity", 0);
+
+            svg.selectAll("path")
+                .data(dataReady)
+                .join("path")
+                .attr("d", arc)
+                .attr("fill", (d, i) => greenShades[i % greenShades.length])
+                .attr("stroke", "none")
+                .on("mouseover", function(event, d) {
+                    const percentage = ((d.data[1] / total) * 100).toFixed(2);
+                    tooltip.style("opacity", 1)
+                        .html(`${d.data[0]}: ${percentage}%`)
+                        .style("left", `${event.pageX + 10}px`)
+                        .style("top", `${event.pageY - 20}px`);
+                    d3.select(this)
+                        .transition().duration(200)
+                        .attr("transform", "scale(1.1)")
+                        .attr("stroke", "#000")
+                        .attr("stroke-width", 2);
+                })
+                .on("mouseout", function() {
+                    tooltip.style("opacity", 0);
+                    d3.select(this)
+                        .transition().duration(200)
+                        .attr("transform", "scale(1)")
+                        .attr("stroke", "none");
+                });
+
+            svg.append("text")
+                .attr("text-anchor", "middle")
+                .style("font-size", "18px")
+                .style("fill", "black") /* Changed to black */
+                .text(columnName);
+        };
+
+        const handleSelection = () => {
+            const selectedValue = d3.select("#chart-select").property("value");
+            d3.selectAll(".chart").classed("active", false);
+            if (selectedValue) {
+                d3.select(`#chart-${selectedValue}`).classed("active", true);
+            }
+        };
+
+        d3.csv("Manhattan_Shade_Updated.csv").then(data => {
+            const categoricalColumns = ["Type", "Material", "Status", "Seating", "Accessibility", "Ownership", "Condition", "Location"];
+            const selectMenu = d3.select("#chart-select");
+            
+            categoricalColumns.forEach(column => {
+                const counts = d3.rollup(data, v => v.length, d => d[column]);
+                const dataObject = Object.fromEntries(counts);
+                const total = d3.sum(Object.values(dataObject));
+                createPieChart(column, dataObject, total);
+
+                selectMenu.append("option").attr("value", column).text(column);
+            });
+
+            d3.select("#chart-select").on("change", handleSelection);
+
+            if (categoricalColumns.length > 0) {
+                d3.select(`#chart-${categoricalColumns[0]}`).classed("active", true);
+            }
+        }).catch((error) => {
+            console.error("Error loading the CSV file:", error);
+        });
+    </script>
+</body>
+</html>
